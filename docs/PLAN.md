@@ -20,15 +20,16 @@ can call.
 - [x] `.mcp.json` so Claude Code picks the server up automatically
 - [x] Python tests: engine bridge + an in-process MCP client
 
-## Phase 3 — Risk limits as code
+## Phase 3 — Risk limits as code ✅
 
 The guarantee "every trade is checked against position limits before it reaches
 the exchange" must not depend on a model remembering to check.
 
-- [ ] `trading_desk.risk`: max order notional, max position per currency, max open orders (valued in USDT)
-- [ ] Enforce inside `place_order`, so *every* MCP client goes through it
-- [ ] Count blocked orders (these become the "risk-limit breaches" metric)
-- [ ] `get_risk_limits` / `check_order` tools so agents can pre-check
+- [x] `trading_desk.risk`: max order notional, max position per currency, max open orders, price deviation (valued in USDT)
+- [x] Enforce inside `place_order`, so *every* MCP client goes through it
+- [x] Count blocked orders (these become the "risk-limit breaches" metric)
+- [x] `get_risk_limits` / `check_order` tools so agents can pre-check
+- [x] Journal (JSONL) of every tool call and wallet snapshot, for scoring
 
 ## Phase 4 — The agents (Claude Agent SDK)
 

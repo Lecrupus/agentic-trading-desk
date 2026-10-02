@@ -8,7 +8,7 @@ that replays a real exchange snapshot (3,540 orders, 5 products, 8 time steps,
 The simulator is exposed as an **MCP server**, so any MCP client, including
 Claude Code, can query the order book and place trades on it.
 
-> **Status:** Phases 1–2 of 7 are done (C++ engine and MCP server). See [docs/PLAN.md](docs/PLAN.md).
+> **Status:** Phases 1–3 of 7 are done (C++ engine, MCP server, risk gate). See [docs/PLAN.md](docs/PLAN.md).
 > To learn how it works, read [docs/LEARNING.md](docs/LEARNING.md).
 
 ## Architecture
@@ -54,7 +54,10 @@ uv run python -m trading_desk.mcp_server
 | `get_market_time` | Current step, total steps, whether the market is closed |
 | `get_order_book` | Best bids/asks, spread, depth at the current step |
 | `get_wallet` | Balances, and funds still available after open orders |
-| `place_order` | Limit bid/ask; fills on the next `advance_time` |
+| `get_portfolio` | Wallet valued in USDT at mid prices |
+| `get_risk_limits` | The hard limits, and how many orders they have blocked |
+| `check_order` | Dry-run an order through the risk checks |
+| `place_order` | Limit bid/ask, risk-checked; fills on the next `advance_time` |
 | `list_open_orders` / `cancel_order` | Manage unfilled orders |
 | `advance_time` | Run the matching engine, settle fills, move the clock |
 | `reset_market` | Back to step 0 with the starting wallet |
@@ -69,7 +72,9 @@ engine/            C++ engine
   data/                  market snapshot
 src/trading_desk/  Python package
   engine.py              process bridge to the C++ engine
-  mcp_server.py          MCP server
+  mcp_server.py          MCP server + journal
+  risk.py                pre-trade risk gate
+  market.py              USDT prices, mark-to-market
 tests/             Python tests (engine bridge, MCP client)
 docs/              PLAN.md, LEARNING.md
 ```

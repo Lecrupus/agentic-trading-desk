@@ -179,4 +179,58 @@ then advance time and show me my wallet."* Watch which tools it calls.
 
 ---
 
-*Phases 3–7 are added here as they're built. See [PLAN.md](PLAN.md).*
+## Phase 3: risk limits as code
+
+### Judgement vs. guarantees
+
+Phase 4 adds a *risk agent* that reviews each trade. A model's review is
+useful, but it isn't a guarantee: it can be skipped, talked around, or just
+wrong. So there are two layers:
+
+| Layer | What it is | What it's for |
+|---|---|---|
+| `RiskGate` (`risk.py`) | Plain Python, deterministic | Hard limits. Inside `place_order`, so **no client can bypass it** |
+| Risk agent (Phase 4) | A model with read-only tools | Judgement: "is this a sensible trade?" |
+
+Putting the gate in the MCP server, not in the agent code, matters: Claude
+Code, a script, or a misbehaving agent all go through the same check.
+
+### The limits (`RiskLimits`)
+
+| Limit | Default | Stops |
+|---|---|---|
+| `max_order_notional_usdt` | 10,000 | one oversized order |
+| `max_position_usdt` | 75,000 | piling into one currency (balance + pending buys) |
+| `max_open_orders` | 5 | order spam |
+| `max_price_deviation` | 2% from mid | "fat finger" prices |
+
+Everything is valued in **USDT** (`market.py`). ETH/BTC is priced in BTC, so a
+notional of 1 ETH there is `amount × price × (BTC in USDT)`. Currencies without
+a direct USDT book are valued through a cross.
+
+The position limit applies to the currency an order *receives*: buying BTC
+grows BTC, selling ETH for BTC grows BTC, selling anything for USDT grows cash
+(no limit). Pending orders count too. Otherwise five orders that are each
+fine could add up to a breach.
+
+### Making failures visible
+
+- A blocked order is a **tool error** starting with `RISK REJECTED:` plus the
+  reasons, so the model knows *why* and can resize.
+- `check_order` is a dry run, so agents can ask before acting. Dry runs don't
+  count as breaches. Only actual attempts to place a bad order do.
+- **The journal.** With `TRADING_JOURNAL=run.jsonl`, the server appends every
+  tool call (with status `ok` / `error` / `risk_rejected`), plus a wallet
+  snapshot after each `advance_time`. Phase 6 scores runs from this file. The
+  scorer then trusts what actually happened at the exchange, not the agent's
+  own summary of it.
+
+### Try it
+
+In Claude Code, ask: *"Buy 100 ETH at the best ask."* It will be rejected (about
+11,700 USDT, over the notional limit). Watch whether it reads the reason and
+resizes. Then look at `get_risk_limits`.
+
+---
+
+*Phases 4–7 are added here as they're built. See [PLAN.md](PLAN.md).*
