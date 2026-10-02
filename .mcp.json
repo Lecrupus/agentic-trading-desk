@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "trading-desk": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "trading_desk.mcp_server"]
+    }
+  }
+}
