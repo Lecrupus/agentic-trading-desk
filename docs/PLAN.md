@@ -55,8 +55,8 @@ the exchange" must not depend on a model remembering to check.
 - [x] JSON + Markdown report per run
 - [x] `--check` invariants with a non-zero exit code for CI
 
-## Phase 7 — Docker and CI
+## Phase 7 — Docker and CI ✅
 
-- [ ] `Dockerfile`: build the engine, install Python deps, run tests
-- [ ] GitHub Actions on Linux: C++ tests, Python tests, baseline evals
-- [ ] Optional agent eval job when an `ANTHROPIC_API_KEY` secret is set
+- [x] `Dockerfile`: build stage compiles the engine and runs the C++ tests; runtime stage runs the evals
+- [x] GitHub Actions on Linux: C++ tests, Python tests, baseline evals, Docker build + run
+- [x] Agent eval job, run on demand, using the `ANTHROPIC_API_KEY` secret

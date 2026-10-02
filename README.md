@@ -1,50 +1,80 @@
 # Agentic Trading Desk
 
+[![CI](https://github.com/Lecrupus/agentic-trading-desk/actions/workflows/ci.yml/badge.svg)](https://github.com/Lecrupus/agentic-trading-desk/actions/workflows/ci.yml)
+
 A multi-agent trading system built on MCP. An orchestrator agent delegates to
-analyst, risk and execution sub-agents. They trade on a C++ order-book simulator
-that replays a real exchange snapshot (3,540 orders, 5 products, 8 time steps,
-17 March 2020).
+**analyst**, **risk** and **execution** sub-agents (Claude Agent SDK). They
+trade on a **C++ order-book simulator** that replays a real exchange snapshot:
+3,540 orders, 5 products, 8 time steps, 17 March 2020.
 
-The simulator is exposed as an **MCP server**, so any MCP client, including
-Claude Code, can query the order book and place trades on it.
+- The simulator is exposed as an **MCP server**, so any MCP client, including
+  Claude Code, can read the book and trade on it.
+- **Every order is checked against hard risk limits** inside the server before
+  it reaches the exchange, whichever agent or client sent it.
+- An **evaluation harness** replays the snapshot and scores each run on PnL,
+  risk-limit breaches and failed tool calls. It runs in Docker and in CI on Linux.
 
-> **Status:** Phases 1–6 of 7 are done (engine, MCP server, risk gate, agents, skills, evals). See [docs/PLAN.md](docs/PLAN.md).
-> To learn how it works, read [docs/LEARNING.md](docs/LEARNING.md).
+New to the code? Read **[docs/LEARNING.md](docs/LEARNING.md)**. It walks through
+every layer and why it's built that way.
 
 ## Architecture
 
 ```
- Agents (Claude Agent SDK)      Claude Code / any MCP client
-          \                      /
-           \     MCP (stdio)    /
-            v                  v
-        MCP server (Python, trading_desk.mcp_server)
-                    |   text command in, JSON line out
-                    v
+            orchestrator ── analyst  (read-only tools)
+                 │      ├── risk     (read + check_order)
+                 │      └── execution (place/cancel only)
+                 │   Claude Agent SDK · per-agent tools · PreToolUse role hook
+                 ▼
+  Claude Code ─► MCP server (Python, stdio) ── risk gate ── journal (JSONL)
+                 │   text command in, JSON line out
+                 ▼
         engine_server (C++17): order book · matching engine · wallet · clock
 ```
 
 ## Quick start
 
-You need: a C++17 compiler (`g++`), [uv](https://docs.astral.sh/uv/), and Python 3.11+.
+You need a C++17 compiler (`g++`), [uv](https://docs.astral.sh/uv/), and Python 3.11+.
 
 ```bash
 make test          # Windows (MSYS2): mingw32-make test
 ```
 
-This builds `build/engine_server`, then runs the 34 C++ tests and the Python tests.
+This builds the engine, then runs the 34 C++ tests and 44 Python tests.
 
-Try the engine by hand:
-
-```bash
-./build/engine_server engine/data/20200317.csv
-```
-
-Run the MCP server (Claude Code starts it for you through `.mcp.json`):
+Replay the market with the scripted baseline traders (free, no API key):
 
 ```bash
-uv run python -m trading_desk.mcp_server
+uv run python -m trading_desk.evals --check
 ```
+
+| Run | PnL (USDT) | Orders | Fills | Failed calls | Risk breaches |
+|---|---:|---:|---:|---:|---:|
+| hold | +0.00 | 0 | 0 | 0 | 0 |
+| taker | −0.33 | 7 | 7 | 0 | 0 |
+| momentum | −0.24 | 6 | 6 | 0 | 0 |
+| reckless | +0.00 | 0 | 0 | 8 | 14 |
+
+PnL is measured against holding the starting wallet at final prices, so holding scores exactly 0.
+
+Run the agent desk. This calls Claude and needs the `claude` CLI plus
+`ANTHROPIC_API_KEY` or a Claude login. `--max-budget-usd` caps the cost:
+
+```bash
+uv run python -m trading_desk.evals --agent --baselines hold --max-budget-usd 5
+```
+
+Or use Docker:
+
+```bash
+docker build -t trading-desk .
+```
+
+```bash
+docker run --rm trading-desk --check
+```
+
+Or trade by hand in **Claude Code**: open this folder (`.mcp.json` registers
+the server) and ask *"run a trading session"*.
 
 ## MCP tools
 
@@ -60,26 +90,28 @@ uv run python -m trading_desk.mcp_server
 | `place_order` | Limit bid/ask, risk-checked; fills on the next `advance_time` |
 | `list_open_orders` / `cancel_order` | Manage unfilled orders |
 | `advance_time` | Run the matching engine, settle fills, move the clock |
-| `reset_market` | Back to step 0 with the starting wallet |
+| `reset_market` | Back to step 0 with the starting wallet (disabled for agents) |
 
 ## Layout
 
 ```
-engine/            C++ engine
-  include/exchange.hpp   OrderBook, Wallet, matching engine, Exchange
-  src/engine_server.cpp  stdin/stdout line protocol
-  tests/                 C++ unit tests
-  data/                  market snapshot
-src/trading_desk/  Python package
-  engine.py              process bridge to the C++ engine
-  mcp_server.py          MCP server + journal
-  risk.py                pre-trade risk gate
-  market.py              USDT prices, mark-to-market
-  agents.py              orchestrator + analyst/risk/execution sub-agents
-  evals.py               replay + scoring harness, baseline strategies
-.claude/skills/    Agent Skills: read-order-book, place-safe-order, trading-session
-tests/             Python tests (engine bridge, MCP client)
-docs/              PLAN.md, LEARNING.md
+engine/                  C++ engine
+  include/exchange.hpp     OrderBook, Wallet, matching engine, Exchange
+  src/engine_server.cpp    stdin/stdout line protocol
+  tests/                   C++ unit tests
+  data/                    market snapshot
+src/trading_desk/        Python package
+  engine.py                process bridge to the C++ engine
+  mcp_server.py            MCP server + journal
+  risk.py                  pre-trade risk gate
+  market.py                USDT prices, mark-to-market
+  agents.py                orchestrator + analyst/risk/execution sub-agents
+  evals.py                 replay + scoring harness, baseline strategies
+.claude/skills/          Agent Skills: read-order-book, place-safe-order, trading-session
+tests/                   Python tests
+Dockerfile               engine build stage + Python runtime
+.github/workflows/ci.yml tests, baseline evals, Docker; agent eval on demand
+docs/                    PLAN.md, LEARNING.md
 ```
 
 Built on my earlier [Cryptocurrency Trading Platform](https://github.com/Lecrupus/Cryptocurrency-Trading-Platform-) simulator.

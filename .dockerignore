@@ -1,0 +1,7 @@
+.git
+.venv
+build
+runs
+**/__pycache__
+.pytest_cache
+*.exe

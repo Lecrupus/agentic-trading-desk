@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: "Also run the agent desk eval (calls Claude; needs the ANTHROPIC_API_KEY secret)"
+        type: boolean
+        default: false
+
+jobs:
+  test:
+    name: Build, test, baseline evals
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build engine and run all tests
+        run: make test
+      - name: Replay the snapshot with baseline traders
+        run: uv run python -m trading_desk.evals --check --out runs/ci
+      - name: Publish the report
+        if: always()
+        run: cat runs/ci/report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-baselines
+          path: runs/ci
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (compiles the engine and runs the C++ tests)
+        run: docker build -t trading-desk .
+      - name: Run the evals inside the container
+        run: docker run --rm trading-desk --check
+
+  agent-eval:
+    name: Agent desk eval
+    if: github.event_name == 'workflow_dispatch' && inputs.agent
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Require the API key secret
+        if: env.ANTHROPIC_API_KEY == ''
+        run: |
+          echo "::error::Set the ANTHROPIC_API_KEY repository secret to run the agent eval."
+          exit 1
+      - run: make engine
+      - name: Run the agent desk against the snapshot
+        run: uv run python -m trading_desk.evals --agent --baselines hold --check --max-budget-usd 5 --out runs/agent
+      - name: Publish the report
+        if: always()
+        run: cat runs/agent/report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-agent
+          path: runs/agent

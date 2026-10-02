@@ -404,4 +404,58 @@ per run. Open a journal: every line is a tool call or a wallet snapshot.
 
 ---
 
-*Phase 7 is added here once it's built. See [PLAN.md](PLAN.md).*
+## Phase 7: Docker and CI
+
+### The Dockerfile: two stages
+
+```
+stage 1  gcc:14            compile engine_server + test_exchange, run the C++ tests
+stage 2  python:3.12-slim  uv sync, copy the engine binary in, run the evals
+```
+
+- **The build is a test.** `./build/test_exchange` runs inside stage 1, so a
+  failing C++ test means the image never gets built.
+- **Small runtime image.** No compiler in the final image, just the binary.
+  It's linked with `-static-libstdc++` because `gcc:14` ships a newer C++
+  runtime than the slim Python image. That's the same class of problem as the
+  Windows DLL clash in Phase 1.
+- **Layer caching.** `pyproject.toml` and `uv.lock` are copied and installed
+  *before* the source, so editing code doesn't reinstall every dependency.
+- `ENTRYPOINT` is the eval harness, so `docker run trading-desk --check`
+  replays the market, and `--agent` adds the agent desk.
+
+### CI (`.github/workflows/ci.yml`)
+
+| Job | When | What |
+|---|---|---|
+| `test` | every push and PR | `make test` (C++ + Python), then baseline evals with `--check`; the report goes to the run summary and an artifact |
+| `docker` | every push and PR | builds the image (C++ tests included) and runs the evals inside it |
+| `agent-eval` | manual only (Actions → CI → Run workflow → tick "agent") | runs the real agent desk; needs the `ANTHROPIC_API_KEY` repository secret |
+
+The agent eval is manual on purpose. It costs money and isn't deterministic,
+so it shouldn't gate every push. The baselines are free and deterministic, so
+they run every time and catch harness regressions.
+
+### Try it
+
+```bash
+docker build -t trading-desk .
+```
+
+```bash
+docker run --rm trading-desk --check
+```
+
+On GitHub, open the **Actions** tab. Each run's summary shows the evaluation
+table.
+
+---
+
+## Where to go next
+
+- Run the agent desk and read `runs/.../*.transcript.jsonl` to see each
+  hand-off between the agents.
+- Change one prompt or skill, rerun `--agent`, and compare against `hold`.
+  That's the eval loop real agent teams use.
+- Add a strategy to `BASELINES` in `evals.py`, or a new limit to `RiskLimits`
+  with a test.
