@@ -1,0 +1,57 @@
+name: Deploy
+
+# Publishes the replay dashboard to GitHub Pages after CI passes on main.
+# (The live playground deploys itself on Render from render.yaml.)
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  dashboard:
+    name: Replay dashboard (GitHub Pages)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read      # to fetch the latest agent-run artifact
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: astral-sh/setup-uv@v6
+      - run: make engine
+      - name: Replay the snapshot with the baseline traders
+        run: uv run python -m trading_desk.evals --out runs/site
+      - name: Fetch the most recent agent-desk run, if there is one
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh run list --workflow ci.yml --event workflow_dispatch --status success \
+                        --limit 20 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$id" -n eval-agent -D runs/agent 2>/dev/null; then
+              echo "Using agent run from CI run $id"; break
+            fi
+          done
+      - name: Build the site
+        env:
+          PLAYGROUND_URL: ${{ vars.PLAYGROUND_URL }}
+        run: |
+          if [ -f runs/agent/report.json ]; then AGENT="--agent runs/agent"; fi
+          uv run python -m trading_desk.site --evals runs/site --out _site $AGENT
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

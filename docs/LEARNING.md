@@ -451,6 +451,65 @@ table.
 
 ---
 
+## Phase 8: showing it working
+
+There are two deployments, because they answer different questions:
+
+| | Replay dashboard | Live playground |
+|---|---|---|
+| Answers | "What did each trader do, and how did it score?" | "Let me try it myself." |
+| Hosting | GitHub Pages (static files) | Render (a real server) |
+| Runs | nothing at view time; CI precomputes everything | the C++ engine + MCP server, live |
+| Cost | free, always on | free plan; sleeps when idle |
+
+### One code path: `DeskService`
+
+Before this phase, the trading logic (risk gate, journal, validation) lived
+inside the MCP tool functions. A web API would have had to copy it, and copies
+drift. So it moved into `DeskService` (`mcp_server.py`):
+
+```
+MCP tools (stdio or HTTP) ─┐
+                           ├─► DeskService ─► risk gate ─► engine
+web playground API ────────┘       └─► journal
+```
+
+The refactor changed no behaviour: all the existing tests passed untouched.
+That's what tests are for.
+
+### The playground (`web.py`)
+
+- **One server, three jobs.** `MCPServer.streamable_http_app()` serves MCP at
+  `/mcp`, and `custom_route` adds the page and the JSON API to the same app.
+- **Isolation.** Each browser gets its own `Engine` (its own C++ process),
+  keyed by a random session id. A `SessionPool` caps how many exist and evicts
+  the least recently used, so a busy page can't exhaust memory.
+- **Untrusted input, again.** Bad JSON or a smuggled newline is a 400, not a
+  crash (`tests/test_web.py`).
+- **DNS-rebinding protection** on `/mcp`: only the deployment's own host name
+  is accepted (`PUBLIC_HOSTS`, or Render's `RENDER_EXTERNAL_HOSTNAME`).
+
+### The dashboard (`site.py` + `static/dashboard.html`)
+
+`site.py` replays the market to capture every step's order books, groups each
+journal by time step, and computes PnL after each step. When an agent run
+exists, it walks the transcript, following the orchestrator's `Agent` tool
+calls and their replies, to recover the hand-offs per step. It writes one JSON
+file, and the page draws everything from it with plain JavaScript: no build
+step, no framework.
+
+The deploy workflow runs after CI succeeds on `main`. It replays the baselines,
+fetches the latest agent-run artifact if there is one, builds the site, and
+publishes it to Pages.
+
+### Why the agent isn't live on the web
+
+A public page that runs the agent desk would spend your API credit on every
+visit. The usual answer is to record runs (the CI `agent-eval` job) and replay
+them. Visitors see exactly what the agents did, at no cost per view.
+
+---
+
 ## Where to go next
 
 - Run the agent desk and read `runs/.../*.transcript.jsonl` to see each

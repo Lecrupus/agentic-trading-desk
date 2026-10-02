@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading Desk Playground</title>
+<meta name="description" content="Trade against a replayed crypto order book. Every order passes a hard risk gate before the C++ matching engine sees it.">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --surface-2: #f3f2ee;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --hairline: #e1e0d9;
+    --ring: rgba(11, 11, 11, 0.10);
+    --bid: #2a78d6;
+    --bid-wash: rgba(42, 120, 214, 0.14);
+    --ask: #e34948;
+    --ask-wash: rgba(227, 73, 72, 0.13);
+    --good: #006300;
+    --good-bg: rgba(12, 163, 12, 0.10);
+    --critical: #b42d2d;
+    --critical-bg: rgba(208, 59, 59, 0.10);
+    --accent: #2a78d6;
+    --accent-ink: #ffffff;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --surface-2: #222220;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --hairline: #2c2c2a;
+      --ring: rgba(255, 255, 255, 0.10);
+      --bid: #3987e5;
+      --bid-wash: rgba(57, 135, 229, 0.20);
+      --ask: #e66767;
+      --ask-wash: rgba(230, 103, 103, 0.18);
+      --good: #0ca30c;
+      --good-bg: rgba(12, 163, 12, 0.14);
+      --critical: #e66767;
+      --critical-bg: rgba(208, 59, 59, 0.16);
+      --accent: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #222220; --ink: #ffffff; --ink-2: #c3c2b7;
+    --muted: #898781; --hairline: #2c2c2a; --ring: rgba(255, 255, 255, 0.10); --bid: #3987e5;
+    --bid-wash: rgba(57, 135, 229, 0.20); --ask: #e66767; --ask-wash: rgba(230, 103, 103, 0.18);
+    --good: #0ca30c; --good-bg: rgba(12, 163, 12, 0.14); --critical: #e66767; --critical-bg: rgba(208, 59, 59, 0.16);
+    --accent: #3987e5;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--muted); font-weight: 500; }
+  .lede { color: var(--ink-2); margin: 6px 0 18px; max-width: 760px; }
+  .clock { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .pill { font: 600 13px var(--mono); background: var(--surface); box-shadow: 0 0 0 1px var(--ring);
+          padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+  .pill.closed { color: var(--critical); }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 0; padding: 8px 14px; }
+  button.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.ghost { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--ring); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible, tr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr); }
+  @media (max-width: 1060px) { .grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .col3 { grid-column: 1 / -1; } }
+  @media (max-width: 700px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .card { background: var(--surface); border-radius: 12px; box-shadow: 0 0 0 1px var(--ring); padding: 14px 14px 12px; min-width: 0; }
+  .card h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .card h2 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 6px 4px; text-align: right; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; border-bottom: 1px solid var(--hairline); }
+  th:first-child, td:first-child { text-align: left; }
+  td { font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--hairline); }
+  tr:last-child td { border-bottom: 0; }
+  .markets tbody tr { cursor: pointer; }
+  .markets tbody tr:hover td { background: var(--surface-2); }
+  .markets tbody tr.sel td { background: var(--surface-2); font-weight: 600; }
+  .muted { color: var(--muted); }
+  .scroll-x { overflow-x: auto; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .stat .label { color: var(--muted); font-size: 12px; }
+  .stat .value { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+  .up { color: var(--good); } .down { color: var(--critical); }
+
+  .ladder { font-family: var(--mono); font-size: 13px; }
+  .ladder .row { position: relative; display: grid; grid-template-columns: 1fr 1fr; padding: 3px 6px; cursor: pointer; border-radius: 4px; }
+  .ladder .row:hover { background: var(--surface-2); }
+  .ladder .bar { position: absolute; top: 2px; bottom: 2px; right: 0; border-radius: 4px 0 0 4px; }
+  .ladder .ask .bar { background: var(--ask-wash); }
+  .ladder .bid .bar { background: var(--bid-wash); }
+  .ladder .price, .ladder .amt { position: relative; }
+  .ladder .amt { text-align: right; color: var(--ink-2); }
+  .ladder .mine .amt::after { content: " · you"; color: var(--ink); font: 600 11px system-ui, sans-serif; }
+  .ladder .ask .price { color: var(--ask); }
+  .ladder .bid .price { color: var(--bid); }
+  .ladder .mid { display: flex; justify-content: space-between; padding: 6px; margin: 4px 0;
+                 border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); color: var(--ink-2); font-size: 12px; }
+  .ladder .side-label { font: 600 11px system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 2px 6px; }
+  .empty { color: var(--muted); padding: 10px 6px; font-family: system-ui, sans-serif; }
+
+  .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface-2); border-radius: 8px; padding: 3px; gap: 3px; margin-bottom: 10px; }
+  .seg button { background: transparent; color: var(--ink-2); padding: 7px; }
+  .seg button[aria-pressed="true"].buy { background: var(--bid); color: #fff; font-weight: 600; }
+  .seg button[aria-pressed="true"].sell { background: var(--ask); color: #fff; font-weight: 600; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  label { display: block; font-size: 12px; color: var(--muted); }
+  input, select { width: 100%; margin-top: 4px; font: 14px var(--mono); padding: 8px 10px; border-radius: 8px;
+                  border: 0; background: var(--surface-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ring); }
+  .ticket-foot { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 12px; flex-wrap: wrap; }
+  .ticket-foot .actions { display: flex; gap: 8px; }
+  .notional { color: var(--ink-2); font-size: 13px; }
+
+  .banner { margin-top: 12px; padding: 10px 12px; border-radius: 8px; font-size: 13px; display: none; }
+  .banner.show { display: block; }
+  .banner.ok { background: var(--good-bg); color: var(--good); }
+  .banner.bad { background: var(--critical-bg); color: var(--critical); }
+  .banner strong { display: block; margin-bottom: 2px; }
+  .banner ul { margin: 4px 0 0; padding-left: 18px; }
+
+  .limits div { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--hairline); }
+  .limits div:last-child { border-bottom: 0; }
+  .limits span:last-child { font-variant-numeric: tabular-nums; font-weight: 500; }
+
+  .log { list-style: none; margin: 0; padding: 0; max-height: 420px; overflow-y: auto; }
+  .log li { padding: 8px 0 8px 22px; border-bottom: 1px solid var(--hairline); position: relative; font-size: 13px; }
+  .log li:last-child { border-bottom: 0; }
+  .log li::before { position: absolute; left: 2px; top: 8px; font-weight: 700; }
+  .log li.ok::before { content: "✓"; color: var(--good); }
+  .log li.risk::before { content: "⛔"; font-size: 11px; top: 10px; }
+  .log li.err::before { content: "✕"; color: var(--critical); }
+  .log li.step::before { content: "▶"; color: var(--accent); font-size: 11px; top: 10px; }
+  .log li.info::before { content: "·"; color: var(--muted); }
+  .log .why { color: var(--critical); display: block; }
+  .log .detail { color: var(--ink-2); display: block; }
+
+  .connect { margin-top: 16px; }
+  .connect p { margin: 0 0 8px; color: var(--ink-2); }
+  .cmd { display: flex; gap: 8px; align-items: stretch; }
+  .cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 13px var(--mono); background: var(--surface-2);
+              padding: 9px 12px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--ring); }
+  footer { margin-top: 20px; color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  footer a, .lede a { color: var(--accent); }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--page);
+           padding: 10px 16px; border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
+  .toast.show { opacity: 1; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Agentic Trading Desk <span>· Playground</span></h1>
+    <div class="clock">
+      <span class="pill" id="step">Step –</span>
+      <span class="pill" id="time">–</span>
+      <button class="primary" id="advance">Advance time ▶</button>
+      <button class="ghost" id="reset">Reset</button>
+    </div>
+  </header>
+  <p class="lede">
+    A replay of a real crypto exchange snapshot (17 March 2020, 8 time steps). Place limit orders, then
+    <b>advance time</b> to run the C++ matching engine. Every order goes through the same hard
+    <b>risk gate</b> the AI agents use. Try buying 100 ETH to watch it get blocked.
+    <a href="https://github.com/Lecrupus/agentic-trading-desk">How it works →</a>
+  </p>
+
+  <div class="grid">
+    <div class="col">
+      <section class="card">
+        <h2>Markets <span class="hint">· click to trade</span></h2>
+        <div class="scroll-x">
+          <table class="markets">
+            <thead><tr><th>Product</th><th>Bid</th><th>Ask</th><th>Spread</th></tr></thead>
+            <tbody id="markets"></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Portfolio</h2>
+        <div class="stats">
+          <div class="stat"><div class="label">Value (USDT)</div><div class="value" id="value">–</div></div>
+          <div class="stat"><div class="label">PnL vs holding <span class="sr">(your wallet minus the starting wallet, both at current prices)</span></div><div class="value" id="pnl">–</div></div>
+        </div>
+        <div class="scroll-x">
+          <table>
+            <thead><tr><th>Currency</th><th>Balance</th><th>Available</th><th>≈ USDT</th></tr></thead>
+            <tbody id="wallet"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="stale" style="margin:8px 0 0;font-size:12px"></p>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card">
+        <h2 id="book-title">Order book</h2>
+        <div class="ladder" id="ladder" aria-live="polite"></div>
+      </section>
+      <section class="card">
+        <h2>Order ticket</h2>
+        <div class="seg" role="group" aria-label="Side">
+          <button class="buy" id="side-bid" aria-pressed="true">Buy (bid)</button>
+          <button class="sell" id="side-ask" aria-pressed="false">Sell (ask)</button>
+        </div>
+        <div class="fields">
+          <label>Product<select id="product"></select></label>
+          <label>Limit price<input id="price" inputmode="decimal" autocomplete="off"></label>
+          <label>Amount<input id="amount" inputmode="decimal" value="1" autocomplete="off"></label>
+          <label>Quick fill<select id="quick">
+            <option value="">—</option>
+            <option value="touch">Cross the spread</option>
+            <option value="passive">Join the best price</option>
+          </select></label>
+        </div>
+        <div class="ticket-foot">
+          <span class="notional" id="notional"></span>
+          <span class="actions">
+            <button class="ghost" id="check">Check risk</button>
+            <button class="primary" id="place">Place order</button>
+          </span>
+        </div>
+        <div class="banner" id="banner" role="status"></div>
+      </section>
+    </div>
+
+    <div class="col col3">
+      <section class="card">
+        <h2>Open orders <span class="hint">· live for one step</span></h2>
+        <div id="orders"></div>
+      </section>
+      <section class="card">
+        <h2>Risk limits</h2>
+        <div class="limits" id="limits"></div>
+      </section>
+      <section class="card">
+        <h2>Activity</h2>
+        <ul class="log" id="log"></ul>
+      </section>
+    </div>
+  </div>
+
+  <section class="card connect">
+    <h2>Connect Claude to this exchange</h2>
+    <p>This server also speaks MCP over HTTP. Add it to Claude Code and ask Claude to trade (a shared sandbox market, separate from your playground):</p>
+    <div class="cmd"><code id="mcp-cmd"></code><button class="ghost" id="copy">Copy</button></div>
+  </section>
+
+  <footer>
+    <span>Engine: C++17 order book · Server: Python MCP · Risk gate on every order</span>
+    <a href="https://github.com/Lecrupus/agentic-trading-desk">GitHub</a>
+    <a href="https://lecrupus.github.io/agentic-trading-desk/">Replay dashboard</a>
+  </footer>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const KEY = "desk-session";
+  let session = null;
+  try { session = localStorage.getItem(KEY); } catch (_) {}
+  let S = null;            // latest state from the server
+  let product = "ETH/USDT";
+  let side = "bid";
+
+  function el(tag, props = {}, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else if (v !== undefined && v !== null) n.setAttribute(k, v);
+    }
+    for (const k of kids.flat()) if (k !== null && k !== undefined) n.append(k.nodeType ? k : document.createTextNode(String(k)));
+    return n;
+  }
+
+  function fmtPrice(p) {
+    if (p === null || p === undefined) return "—";
+    if (p >= 100) return p.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (p >= 1) return p.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+    return p.toPrecision(5);
+  }
+  const fmtAmt = (a) => a.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  const fmtUsd = (v) => v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const signed = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmtUsd(Math.abs(v));
+  const mid = (b) => (b.best_bid != null && b.best_ask != null) ? (b.best_bid + b.best_ask) / 2 : (b.best_bid ?? b.best_ask);
+
+  async function api(path, body) {
+    const opts = { method: body === undefined ? "GET" : "POST", headers: { "content-type": "application/json" } };
+    if (session) opts.headers["x-desk-session"] = session;
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const res = await fetch(path, opts);
+    const data = await res.json();
+    if (data.session && data.session !== session) {
+      session = data.session;
+      try { localStorage.setItem(KEY, session); } catch (_) {}
+    }
+    if (data.state) { S = data.state; render(); }
+    return data;
+  }
+
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 3200);
+  }
+
+  function banner(kind, title, reasons) {
+    const b = $("banner");
+    b.replaceChildren(el("strong", { text: title }));
+    if (reasons && reasons.length) b.append(el("ul", {}, reasons.map((r) => el("li", { text: r }))));
+    b.className = "banner show " + kind;
+  }
+  const clearBanner = () => { $("banner").className = "banner"; };
+
+  // ---------- rendering ----------
+  function render() {
+    const t = S.time;
+    $("step").textContent = t.done ? "Market closed" : `Step ${t.step + 1} / ${t.total_steps}`;
+    $("step").classList.toggle("closed", t.done);
+    $("time").textContent = t.time.slice(11, 19);
+    $("advance").disabled = t.done;
+    $("place").disabled = t.done;
+    $("check").disabled = t.done;
+
+    // markets
+    $("markets").replaceChildren(...Object.entries(S.books).map(([p, b]) => {
+      const m = mid(b);
+      const bps = (b.spread != null && m) ? (b.spread / m * 1e4).toFixed(1) + " bps" : "—";
+      const row = el("tr", { class: p === product ? "sel" : "", tabindex: "0", onclick: () => select(p),
+                             onkeydown: (e) => { if (e.key === "Enter") select(p); } },
+        el("td", { text: p }), el("td", { text: fmtPrice(b.best_bid) }), el("td", { text: fmtPrice(b.best_ask) }),
+        el("td", { class: "muted", text: bps }));
+      return row;
+    }));
+
+    // product select
+    const sel = $("product");
+    if (sel.options.length !== Object.keys(S.books).length) {
+      sel.replaceChildren(...Object.keys(S.books).map((p) => el("option", { value: p, text: p })));
+    }
+    sel.value = product;
+
+    // ladder
+    const b = S.books[product];
+    $("book-title").textContent = `Order book · ${product}`;
+    const maxAmt = Math.max(1e-12, ...b.bids.map((l) => l[1]), ...b.asks.map((l) => l[1]));
+    const mine = (price, amt) => S.orders.some((o) => o.product === product && o.price === price && o.amount === amt);
+    const level = (cls, [price, amt]) => el("div", { class: "row " + cls + (mine(price, amt) ? " mine" : ""), title: "Use this price",
+        onclick: () => { $("price").value = String(price); updateNotional(); } },
+      el("span", { class: "bar", style: `width:${Math.max(2, amt / maxAmt * 100)}%` }),
+      el("span", { class: "price", text: fmtPrice(price) }), el("span", { class: "amt", text: fmtAmt(amt) }));
+    const ladder = [];
+    ladder.push(el("div", { class: "side-label", text: "Asks · sellers" }));
+    if (b.asks.length) ladder.push(...b.asks.slice().reverse().map((l) => level("ask", l)));
+    else ladder.push(el("div", { class: "empty", text: "No asks at this step" }));
+    const m = mid(b);
+    ladder.push(el("div", { class: "mid" },
+      el("span", { text: m ? `Mid ${fmtPrice(m)}` : "No mid price" }),
+      el("span", { text: b.spread != null ? `Spread ${fmtPrice(b.spread)} (${(b.spread / m * 1e4).toFixed(1)} bps)` : "" })));
+    if (b.bids.length) ladder.push(...b.bids.map((l) => level("bid", l)));
+    else ladder.push(el("div", { class: "empty", text: "No bids at this step" }));
+    ladder.push(el("div", { class: "side-label", text: "Bids · buyers" }));
+    $("ladder").replaceChildren(...ladder);
+
+    // portfolio
+    $("value").textContent = fmtUsd(S.value_usdt);
+    const pnl = S.pnl_vs_hold_usdt;
+    $("pnl").textContent = signed(pnl);
+    $("pnl").className = "value " + (pnl > 0.005 ? "up" : pnl < -0.005 ? "down" : "");
+    const bal = S.wallet.balances, avail = S.wallet.available;
+    $("wallet").replaceChildren(...Object.keys(bal).map((c) => el("tr", {},
+      el("td", { text: c }), el("td", { text: fmtAmt(bal[c]) }), el("td", { text: fmtAmt(avail[c]) }),
+      el("td", { class: "muted", text: fmtUsd(bal[c] * (S.prices_usdt[c] || 0)) }))));
+    $("stale").textContent = S.stale_prices.length
+      ? `No USDT market for ${S.stale_prices.join(", ")} at this step; valued at the last known price.` : "";
+
+    // open orders
+    $("orders").replaceChildren(S.orders.length
+      ? el("div", { class: "scroll-x" }, el("table", {},
+          el("thead", {}, el("tr", {}, ["#", "Side", "Product", "Price", "Amount", ""].map((h) => el("th", { text: h })))),
+          el("tbody", {}, S.orders.map((o) => el("tr", {},
+            el("td", { text: o.id }), el("td", { text: o.side }), el("td", { text: o.product }),
+            el("td", { text: fmtPrice(o.price) }), el("td", { text: fmtAmt(o.amount) }),
+            el("td", {}, el("button", { class: "ghost", style: "padding:3px 8px", text: "Cancel",
+              onclick: () => act("/api/cancel", { order_id: o.id }) })))))))
+      : el("p", { class: "muted", style: "margin:0", text: "None. Orders fill (or expire) when you advance time." }));
+
+    // limits
+    const L = S.limits;
+    const rows = [
+      ["Max order size", fmtUsd(L.max_order_notional_usdt) + " USDT"],
+      ["Max position per currency", fmtUsd(L.max_position_usdt) + " USDT"],
+      ["Max open orders", L.max_open_orders],
+      ["Max distance from mid", (L.max_price_deviation * 100).toFixed(0) + "%"],
+      ["Orders blocked so far", L.orders_blocked],
+    ];
+    $("limits").replaceChildren(...rows.map(([k, v]) => el("div", {}, el("span", { text: k }), el("span", { text: v }))));
+
+    renderLog();
+    updateNotional();
+  }
+
+  function describe(e) {
+    const a = e.args || {};
+    const order = a.side ? `${a.side === "bid" ? "buy" : "sell"} ${fmtAmt(a.amount)} ${a.product} @ ${fmtPrice(a.price)}` : "";
+    switch (e.tool) {
+      case "place_order":
+        if (e.status === "ok") return ["ok", `Placed #${e.result.order_id}: ${order}`, `≈ ${fmtUsd(e.result.notional_usdt || 0)} USDT · fills on the next step`];
+        if (e.status === "risk_rejected") return ["risk", `Risk gate blocked: ${order}`, null, e.error.split("; ")];
+        return ["err", `Exchange rejected: ${order}`, null, [e.error]];
+      case "check_order":
+        if (e.status !== "ok") return ["err", `Check failed: ${e.error}`];
+        return e.result.approved ? ["info", `Risk check passed: ${order}`] : ["info", `Risk check would block: ${order}`, null, e.result.reasons];
+      case "advance_time": {
+        if (e.status !== "ok") return ["err", `Advance failed: ${e.error}`];
+        const r = e.result;
+        const fills = r.fills.map((f) => `#${f.order_id} ${f.side === "bid" ? "bought" : "sold"} ${fmtAmt(f.amount)} ${f.product} @ ${fmtPrice(f.price)}`);
+        const tail = [...fills, ...(r.expired.length ? [`expired unfilled: #${r.expired.join(", #")}`] : [])];
+        return ["step", `Matched step ${r.step}: ${r.fills.length} fill${r.fills.length === 1 ? "" : "s"}`, tail.join(" · ") || "nothing of yours to match"];
+      }
+      case "cancel_order": return e.status === "ok" ? ["info", `Cancelled #${a.order_id}`] : ["err", e.error];
+      case "reset_market": return ["info", "Market reset to step 1 with the starting wallet"];
+      default: return ["info", e.tool];
+    }
+  }
+
+  function renderLog() {
+    const items = S.activity.slice().reverse().map((e) => {
+      const [cls, title, detail, reasons] = describe(e);
+      return el("li", { class: cls }, title,
+        detail ? el("span", { class: "detail", text: detail }) : null,
+        ...(reasons || []).map((r) => el("span", { class: cls === "info" ? "detail" : "why", text: r })));
+    });
+    $("log").replaceChildren(...(items.length ? items : [el("li", { class: "info", text: "Nothing yet. Pick a market and place an order." })]));
+  }
+
+  // ---------- ticket ----------
+  function select(p) {
+    product = p; clearBanner();
+    const b = S.books[p];
+    const px = side === "bid" ? b.best_ask : b.best_bid;
+    if (px != null) $("price").value = String(px);
+    render();
+  }
+
+  function setSide(s) {
+    side = s;
+    $("side-bid").setAttribute("aria-pressed", s === "bid");
+    $("side-ask").setAttribute("aria-pressed", s === "ask");
+    clearBanner(); updateNotional();
+  }
+
+  function quickFill() {
+    const b = S.books[product], mode = $("quick").value;
+    if (!mode) return;
+    const px = mode === "touch" ? (side === "bid" ? b.best_ask : b.best_bid) : (side === "bid" ? b.best_bid : b.best_ask);
+    if (px != null) $("price").value = String(px);
+    $("quick").value = ""; updateNotional();
+  }
+
+  function ticket() {
+    return { side, product, price: parseFloat($("price").value), amount: parseFloat($("amount").value) };
+  }
+
+  function updateNotional() {
+    if (!S) return;
+    const t = ticket();
+    const quote = product.split("/")[1];
+    const q = S.prices_usdt[quote];
+    $("notional").textContent = (isFinite(t.price) && isFinite(t.amount) && q)
+      ? `≈ ${fmtUsd(t.price * t.amount * q)} USDT` : "";
+  }
+
+  async function act(path, body) {
+    try {
+      const r = await api(path, body);
+      return r;
+    } catch (err) {
+      toast("Network error: " + err.message);
+    }
+  }
+
+  $("side-bid").onclick = () => setSide("bid");
+  $("side-ask").onclick = () => setSide("ask");
+  $("product").onchange = (e) => select(e.target.value);
+  $("quick").onchange = quickFill;
+  $("price").oninput = updateNotional;
+  $("amount").oninput = updateNotional;
+
+  $("check").onclick = async () => {
+    const r = await act("/api/check", ticket());
+    if (!r) return;
+    if (r.error) return banner("bad", r.error);
+    const d = r.result;
+    if (d.approved) banner("ok", `✓ Passes every risk check · ≈ ${fmtUsd(d.notional_usdt)} USDT`);
+    else banner("bad", "⛔ The risk gate would block this order", d.reasons);
+  };
+
+  $("place").onclick = async () => {
+    const r = await act("/api/order", ticket());
+    if (!r) return;
+    if (r.kind === "risk_rejected") banner("bad", "⛔ Blocked by the risk gate. It never reached the exchange.", r.error.split("; "));
+    else if (r.error) banner("bad", "✕ " + r.error);
+    else banner("ok", `✓ Order #${r.result.order_id} placed. Advance time to run the matching engine.`);
+  };
+
+  $("advance").onclick = async () => {
+    const r = await act("/api/step", {});
+    if (!r || r.error) return r && toast(r.error);
+    clearBanner();
+    const n = r.result.fills.length;
+    toast(`Matched step ${r.result.step}: ${n} fill${n === 1 ? "" : "s"}, ${r.result.expired.length} expired`);
+    select(product);
+  };
+
+  $("reset").onclick = async () => { await act("/api/reset", {}); clearBanner(); select(product); };
+
+  const cmd = `claude mcp add --transport http trading-desk ${location.origin}/mcp`;
+  $("mcp-cmd").textContent = cmd;
+  $("copy").onclick = async () => {
+    try { await navigator.clipboard.writeText(cmd); toast("Copied"); } catch (_) { toast("Select the text to copy it"); }
+  };
+
+  api("/api/state").then(() => select(product)).catch((e) => toast("Could not reach the server: " + e.message));
+})();
+</script>
+</body>
+</html>

@@ -17,6 +17,26 @@ trade on a **C++ order-book simulator** that replays a real exchange snapshot:
 New to the code? Read **[docs/LEARNING.md](docs/LEARNING.md)**. It walks through
 every layer and why it's built that way.
 
+## See it working
+
+- **[Replay dashboard](https://lecrupus.github.io/agentic-trading-desk/):** every trader's run, step by step.
+  It shows the order books, orders, risk-gate rejections with reasons, fills, and PnL against holding.
+  When an agent run exists, it also shows the analyst → risk → execution hand-offs.
+  CI rebuilds it after every push to `main`.
+- **Live playground:** trade by hand against the replayed market and watch the risk gate block bad orders.
+  The same server exposes MCP over HTTP at `/mcp`, so you can point Claude at it.
+  Deploy your own copy (free plan):
+
+  [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Lecrupus/agentic-trading-desk)
+
+  Or run it locally:
+
+  ```bash
+  uv run python -m trading_desk.web
+  ```
+
+  Then open http://localhost:7860.
+
 ## Architecture
 
 ```
@@ -39,7 +59,7 @@ You need a C++17 compiler (`g++`), [uv](https://docs.astral.sh/uv/), and Python 
 make test          # Windows (MSYS2): mingw32-make test
 ```
 
-This builds the engine, then runs the 34 C++ tests and 44 Python tests.
+This builds the engine, then runs the 34 C++ tests and 53 Python tests.
 
 Replay the market with the scripted baseline traders (free, no API key):
 
@@ -107,10 +127,15 @@ src/trading_desk/        Python package
   market.py                USDT prices, mark-to-market
   agents.py                orchestrator + analyst/risk/execution sub-agents
   evals.py                 replay + scoring harness, baseline strategies
+  web.py                   live playground + MCP over HTTP
+  site.py                  builds the replay dashboard
+  static/                  playground.html, dashboard.html
 .claude/skills/          Agent Skills: read-order-book, place-safe-order, trading-session
 tests/                   Python tests
-Dockerfile               engine build stage + Python runtime
-.github/workflows/ci.yml tests, baseline evals, Docker; agent eval on demand
+Dockerfile               engine build stage + Python runtime (eval harness)
+deploy/playground/       Dockerfile for the live playground
+render.yaml              Render blueprint for the playground
+.github/workflows/       ci.yml (tests, evals, Docker, agent eval on demand), deploy.yml (Pages)
 docs/                    PLAN.md, LEARNING.md
 ```
 

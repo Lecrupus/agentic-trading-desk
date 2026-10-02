@@ -60,3 +60,11 @@ the exchange" must not depend on a model remembering to check.
 - [x] `Dockerfile`: build stage compiles the engine and runs the C++ tests; runtime stage runs the evals
 - [x] GitHub Actions on Linux: C++ tests, Python tests, baseline evals, Docker build + run
 - [x] Agent eval job, run on demand, using the `ANTHROPIC_API_KEY` secret
+
+## Phase 8 — Show it working ✅
+
+- [x] `DeskService`: one code path (validation, risk gate, journal) shared by MCP tools and the web API
+- [x] Live playground (`trading_desk.web`): trade by hand, per-browser exchanges, MCP over Streamable HTTP at `/mcp`
+- [x] Replay dashboard (`trading_desk.site`): scoreboard, PnL chart, step-by-step replay incl. agent hand-offs
+- [x] GitHub Pages deploy after every green CI run; CI smoke-tests the playground container
+- [x] Render blueprint + "Deploy to Render" button for the playground (Hugging Face Docker Spaces now require PRO)

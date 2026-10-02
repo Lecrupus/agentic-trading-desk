@@ -1,0 +1,14 @@
+# Render Blueprint: the "Deploy to Render" button in the README reads this file.
+# Free plan: sleeps after 15 idle minutes and wakes on the next request (~1 minute).
+services:
+  - type: web
+    name: agentic-trading-desk
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/playground/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: MAX_SESSIONS
+        value: "15"

@@ -40,6 +40,16 @@ jobs:
         run: docker build -t trading-desk .
       - name: Run the evals inside the container
         run: docker run --rm trading-desk --check
+      - name: Build the playground image
+        run: docker build -f deploy/playground/Dockerfile -t trading-desk-playground .
+      - name: Smoke-test the playground and its MCP endpoint
+        run: |
+          docker run -d --name playground -p 7860:7860 trading-desk-playground
+          for i in $(seq 1 30); do curl -sf localhost:7860/healthz && break; sleep 1; done
+          curl -sf localhost:7860/ | grep -q "Trading Desk Playground"
+          curl -sf localhost:7860/api/state | python3 -c "import json,sys; s=json.load(sys.stdin)['state']; assert s['time']['total_steps']==8"
+          curl -sf -X POST localhost:7860/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream'             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | grep -q place_order
+          docker logs playground | tail -20
 
   agent-eval:
     name: Agent desk eval
