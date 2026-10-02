@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from trading_desk.engine import Engine
-from trading_desk.market import CASH, mid_price, usdt_prices
+from trading_desk.market import CASH, PriceTracker, mid_price
 
 
 @dataclass(frozen=True)
@@ -45,9 +45,10 @@ class RiskDecision:
 
 
 class RiskGate:
-    def __init__(self, engine: Engine, limits: RiskLimits | None = None):
+    def __init__(self, engine: Engine, limits: RiskLimits | None = None, prices: PriceTracker | None = None):
         self.engine = engine
         self.limits = limits or RiskLimits()
+        self.prices = prices or PriceTracker(engine)
         self.breaches: list[dict[str, Any]] = []
 
     def check(self, side: str, product: str, price: float, amount: float) -> RiskDecision:
@@ -66,7 +67,7 @@ class RiskGate:
             return d
 
         base, quote = product.split("/")
-        prices = usdt_prices(self.engine)
+        prices = self.prices.prices()
 
         if quote not in prices:
             d.reasons.append(f"cannot value {quote} in USDT right now")

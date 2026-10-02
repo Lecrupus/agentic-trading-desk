@@ -27,7 +27,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from trading_desk.engine import Engine, EngineError
-from trading_desk.market import mark_to_market, usdt_prices
+from trading_desk.market import PriceTracker, mark_to_market
 from trading_desk.risk import RiskGate, RiskLimits
 
 INSTRUCTIONS = """\
@@ -69,17 +69,18 @@ class Journal:
 def build_server(engine: Engine, limits: RiskLimits | None = None, journal: Journal | None = None) -> MCPServer:
     """Builds the server around an engine. Tests and the eval harness pass in their own."""
     mcp = MCPServer(name="trading-desk", instructions=INSTRUCTIONS)
-    gate = RiskGate(engine, limits)
+    tracker = PriceTracker(engine)
+    gate = RiskGate(engine, limits, tracker)
     journal = journal or Journal(None)
 
     def snapshot(reason: str) -> None:
         if journal.path is None:
             return
-        prices = usdt_prices(engine)
+        prices = tracker.prices()
         balances = engine.wallet()["balances"]
         journal.write({
             "event": "snapshot", "reason": reason, **engine.time(),
-            "balances": balances, "prices_usdt": prices,
+            "balances": balances, "prices_usdt": prices, "stale_prices": tracker.stale,
             "value_usdt": mark_to_market(balances, prices),
         })
 
@@ -125,12 +126,17 @@ def build_server(engine: Engine, limits: RiskLimits | None = None, journal: Jour
 
     @mcp.tool()
     def get_portfolio() -> dict[str, Any]:
-        """Values the wallet in USDT at current mid prices: per-currency value and the total."""
+        """Values the wallet in USDT at current mid prices: per-currency value and the total.
+
+        stale_prices lists currencies with no USDT book this step; they are valued
+        at their last known price.
+        """
         def value() -> dict[str, Any]:
-            prices = usdt_prices(engine)
+            prices = tracker.prices()
             balances = engine.wallet()["balances"]
             return {
                 "prices_usdt": prices,
+                "stale_prices": tracker.stale,
                 "value_by_currency_usdt": {c: a * prices.get(c, 0.0) for c, a in balances.items()},
                 "total_value_usdt": mark_to_market(balances, prices),
             }

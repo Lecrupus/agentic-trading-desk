@@ -233,4 +233,113 @@ resizes. Then look at `get_risk_limits`.
 
 ---
 
-*Phases 4–7 are added here as they're built. See [PLAN.md](PLAN.md).*
+### A data quirk worth knowing
+
+The last time step of `20200317.csv` only contains BTC-quoted books (ETH/BTC,
+DOGE/BTC). Every USDT book is empty. Without a fix, two things break there:
+the gate can't value any order, so it rejects them all, and the final
+mark-to-market values BTC and ETH at zero. `PriceTracker` carries the last
+known USDT price forward and lists those currencies in `stale_prices`. Real
+market data always has gaps like this, so valuation code has to expect them.
+
+---
+
+## Phase 4: the agents
+
+### Why several agents instead of one?
+
+One agent with every tool could do the job. Splitting it up buys three things:
+
+- **Least privilege.** The analyst can't place orders, because it is never
+  shown the tool. A confused or prompt-injected analyst can't trade.
+- **Focused context.** Each sub-agent starts fresh with only its own prompt
+  and the task the orchestrator hands it. The analyst's 5-level book dumps
+  never clutter the orchestrator's context.
+- **Checks and balances.** A proposal has to pass a second agent (risk) and the
+  code gate before anything executes.
+
+### How the Agent SDK pieces map to the design (`src/trading_desk/agents.py`)
+
+| Design idea | SDK feature |
+|---|---|
+| Orchestrator | the main `query()` session, with `system_prompt=ORCHESTRATOR_PROMPT` |
+| Sub-agents | `agents={"analyst": AgentDefinition(...), ...}`, invoked via the built-in `Agent` tool |
+| Per-agent tool access | `AgentDefinition(tools=[...])` |
+| The exchange | `mcp_servers={"trading-desk": {"type": "stdio", "command": python, "args": ["-m", "trading_desk.mcp_server"]}}` |
+| No file or shell access at all | `tools=["Agent"]` (the only built-in tool kept) |
+| Nothing runs unless pre-approved | `permission_mode="dontAsk"` + `allowed_tools` |
+| Role enforcement | a `PreToolUse` hook (`enforce_roles`) |
+| Cost guard | `max_budget_usd`, `max_turns` |
+
+MCP tools show up to the model as `mcp__<server>__<tool>`, e.g.
+`mcp__trading-desk__place_order`. That's the name used in tool lists and hooks.
+
+### Defence in depth: three layers
+
+```
+analyst tries place_order
+  1. not in its tool list           -> the model never sees the tool
+  2. PreToolUse hook: role_decision -> denied: "analyst may not call place_order"
+  3. MCP server risk gate           -> limits checked for every caller
+```
+
+Why have the hook when tool lists already restrict access? Because
+`allowed_tools` is session-wide: `place_order` must be pre-approved for the
+execution agent, so the *orchestrator* could call it too. The hook reads
+`agent_type` (set when a sub-agent makes the call) and allows `place_order`
+only for `execution`, and `advance_time` only for the orchestrator.
+`role_decision` is a pure function, so `tests/test_agents.py` tests every case
+without calling a model.
+
+### Agents talk in JSON
+
+Each sub-agent's prompt ends with an exact JSON shape (`{"ideas": [...]}`,
+`{"decisions": [...]}`, `{"placed": [...]}`). The orchestrator passes those
+between agents. A fixed shape makes the hand-offs predictable and easy to check
+in a transcript.
+
+### Try it
+
+You need the Claude Code CLI (`claude`) on PATH, or `--cli-path`, plus
+credentials (`ANTHROPIC_API_KEY` or a Claude login). Then:
+
+```bash
+uv run python -m trading_desk.agents --max-budget-usd 3
+```
+
+It writes `runs/desk.jsonl` (the server's journal) and
+`runs/desk.transcript.jsonl` (every message). Read the transcript to see each
+hand-off between agents.
+
+---
+
+## Phase 5: Agent Skills
+
+A **skill** is a folder with a `SKILL.md`: a name, a one-line description, and
+instructions. Claude sees only the description until the skill is relevant;
+then it loads the whole file. Skills are how you package know-how once and
+reuse it in every session and every agent.
+
+| Skill | Used by | Teaches |
+|---|---|---|
+| `read-order-book` | analyst | mid, spread in bps, depth, how fills work, cross-rate gaps |
+| `place-safe-order` | risk, execution | limits → funds → `check_order` → place, plus a sizing formula |
+| `trading-session` | you, in Claude Code | stepping through a session, and how runs are scored |
+
+They live in `.claude/skills/`, so they work in two places:
+- **Our agents:** `AgentDefinition(skills=[...])`, loaded through `setting_sources=["project"]`.
+- **Any Claude Code session in this repo:** ask "run a trading session" and it
+  finds `trading-session` by its description.
+
+Prompt vs. skill: the **prompt** says *who you are and what to return*; the
+**skill** says *how to do the work well*. Keeping them separate keeps prompts
+short and lets several agents share the same know-how.
+
+The numbers in `read-order-book` were measured, not assumed: on every step,
+the ETH cross-rate gap (at most 10 bps) is smaller than the spreads you'd cross
+to capture it (at least 25 bps). Teaching the analyst that "doing nothing" is
+often right is part of the skill.
+
+---
+
+*Phases 6–7 are added here as they're built. See [PLAN.md](PLAN.md).*

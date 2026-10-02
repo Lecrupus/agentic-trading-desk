@@ -3,6 +3,10 @@
 Risk limits and PnL both need one common unit. Every currency is valued at the
 mid price of its X/USDT book; if that book is empty, through a cross such as
 DOGE/BTC x BTC/USDT.
+
+Real snapshots have gaps: the last step of 20200317.csv only has BTC-quoted
+books, so nothing can be priced in USDT there. PriceTracker carries the last
+known price forward and reports which prices are stale.
 """
 
 from __future__ import annotations
@@ -45,3 +49,18 @@ def usdt_prices(engine: Engine) -> dict[str, float]:
 def mark_to_market(balances: Mapping[str, float], prices: Mapping[str, float]) -> float:
     """Total wallet value in USDT. Currencies with no price count as zero."""
     return sum(amount * prices.get(currency, 0.0) for currency, amount in balances.items())
+
+
+class PriceTracker:
+    """usdt_prices() with the last known price carried forward when a book is empty."""
+
+    def __init__(self, engine: Engine):
+        self.engine = engine
+        self.last: dict[str, float] = {CASH: 1.0}
+        self.stale: list[str] = []
+
+    def prices(self) -> dict[str, float]:
+        fresh = usdt_prices(self.engine)
+        self.last.update(fresh)
+        self.stale = sorted(set(self.last) - set(fresh))
+        return dict(self.last)

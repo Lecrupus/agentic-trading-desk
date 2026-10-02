@@ -12,12 +12,8 @@ name = "agentic-trading-desk"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "mcp" },
-]
-
-[package.optional-dependencies]
-agents = [
     { name = "claude-agent-sdk" },
+    { name = "mcp" },
 ]
 
 [package.dev-dependencies]
@@ -27,10 +23,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "claude-agent-sdk", marker = "extra == 'agents'", specifier = ">=0.2.163" },
+    { name = "claude-agent-sdk", specifier = ">=0.2.163" },
     { name = "mcp", specifier = ">=2.2" },
 ]
-provides-extras = ["agents"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]

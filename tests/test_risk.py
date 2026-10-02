@@ -69,3 +69,24 @@ def test_open_order_limit(engine):
 def test_bad_input_is_rejected_before_any_pricing(gate):
     assert not gate.check("bid", "XRP/USDT", 1, 1).approved
     assert not gate.check("bid", "ETH/USDT", -1, 1).approved
+
+
+def test_last_step_has_no_usdt_books_so_prices_carry_forward(engine):
+    from trading_desk.market import PriceTracker
+
+    tracker = PriceTracker(engine)
+    first = tracker.prices()
+    for _ in range(7):
+        engine.step()
+    assert usdt_prices(engine) == {"USDT": 1.0}  # the raw snapshot gap
+    carried = tracker.prices()
+    assert carried["BTC"] == first["BTC"]
+    assert tracker.stale == ["BTC", "DOGE", "ETH"]
+
+
+def test_gate_can_still_value_orders_on_the_last_step(engine, gate):
+    gate.prices.prices()  # seen step 0
+    for _ in range(7):
+        engine.step()
+    d = gate.check("bid", "ETH/BTC", engine.book("ETH/BTC", 1)["best_ask"], 1)
+    assert d.approved, d.reasons

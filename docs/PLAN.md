@@ -31,19 +31,21 @@ the exchange" must not depend on a model remembering to check.
 - [x] `get_risk_limits` / `check_order` tools so agents can pre-check
 - [x] Journal (JSONL) of every tool call and wallet snapshot, for scoring
 
-## Phase 4 — The agents (Claude Agent SDK)
+## Phase 4 — The agents (Claude Agent SDK) ✅
 
-- [ ] Orchestrator agent: runs the trading loop one time step at a time
-- [ ] Analyst sub-agent: read-only tools; returns a structured trade idea
-- [ ] Risk sub-agent: reviews a proposal against limits and the wallet; approve / resize / reject
-- [ ] Execution sub-agent: the only one allowed to call `place_order`
-- [ ] Tool permissions per agent (`allowed_tools`), so the analyst *cannot* trade
+- [x] Orchestrator agent: runs the trading loop one time step at a time
+- [x] Analyst sub-agent: read-only tools; returns a structured trade idea
+- [x] Risk sub-agent: reviews a proposal against limits and the wallet; approve / resize / reject
+- [x] Execution sub-agent: the only one allowed to call `place_order`
+- [x] Tool permissions per agent (`AgentDefinition.tools`), so the analyst *cannot* trade
+- [x] `PreToolUse` hook enforcing who may place orders and advance time
 
-## Phase 5 — Agent Skills
+## Phase 5 — Agent Skills ✅
 
-- [ ] `.claude/skills/read-order-book` — how to read depth, spread and mid price
-- [ ] `.claude/skills/place-safe-order` — the pre-trade checklist
-- [ ] Usable from any Claude Code session in this repo, not only our agents
+- [x] `.claude/skills/read-order-book` — how to read depth, spread and mid price
+- [x] `.claude/skills/place-safe-order` — the pre-trade checklist
+- [x] `.claude/skills/trading-session` — running and scoring a session by hand
+- [x] Usable from any Claude Code session in this repo, not only our agents
 
 ## Phase 6 — Evaluation harness
 
