@@ -47,12 +47,13 @@ the exchange" must not depend on a model remembering to check.
 - [x] `.claude/skills/trading-session` — running and scoring a session by hand
 - [x] Usable from any Claude Code session in this repo, not only our agents
 
-## Phase 6 — Evaluation harness
+## Phase 6 — Evaluation harness ✅
 
-- [ ] Replay the snapshot from step 0 to close, one run per agent configuration
-- [ ] Score: PnL (marked to market in USDT), risk-limit breaches, failed tool calls
-- [ ] Deterministic baseline strategies (do-nothing, scripted) so CI runs without an API key
-- [ ] JSON + Markdown report per run
+- [x] Replay the snapshot from step 0 to close, one run per agent configuration
+- [x] Score: PnL (marked to market in USDT), risk-limit breaches, failed tool calls
+- [x] Deterministic baseline strategies (do-nothing, scripted) so CI runs without an API key
+- [x] JSON + Markdown report per run
+- [x] `--check` invariants with a non-zero exit code for CI
 
 ## Phase 7 — Docker and CI
 

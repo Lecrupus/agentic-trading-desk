@@ -8,7 +8,7 @@ that replays a real exchange snapshot (3,540 orders, 5 products, 8 time steps,
 The simulator is exposed as an **MCP server**, so any MCP client, including
 Claude Code, can query the order book and place trades on it.
 
-> **Status:** Phases 1–5 of 7 are done (engine, MCP server, risk gate, agents, skills). See [docs/PLAN.md](docs/PLAN.md).
+> **Status:** Phases 1–6 of 7 are done (engine, MCP server, risk gate, agents, skills, evals). See [docs/PLAN.md](docs/PLAN.md).
 > To learn how it works, read [docs/LEARNING.md](docs/LEARNING.md).
 
 ## Architecture
@@ -76,6 +76,7 @@ src/trading_desk/  Python package
   risk.py                pre-trade risk gate
   market.py              USDT prices, mark-to-market
   agents.py              orchestrator + analyst/risk/execution sub-agents
+  evals.py               replay + scoring harness, baseline strategies
 .claude/skills/    Agent Skills: read-order-book, place-safe-order, trading-session
 tests/             Python tests (engine bridge, MCP client)
 docs/              PLAN.md, LEARNING.md

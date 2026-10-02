@@ -342,4 +342,66 @@ often right is part of the skill.
 
 ---
 
-*Phases 6–7 are added here as they're built. See [PLAN.md](PLAN.md).*
+## Phase 6: the evaluation harness
+
+### Why evaluate at all?
+
+An agent that *says* "I made 200 USDT" proves nothing. You need a repeatable
+run with numbers you trust, so you can tell whether a prompt change, a new
+model or a new skill actually helped.
+
+### Design (`src/trading_desk/evals.py`)
+
+1. **Same start every time.** Each run gets a fresh engine at step 0 with the
+   starting wallet, and plays to the close.
+2. **Same road to the exchange.** Baselines and the agent desk both go through
+   the MCP server, so the same risk gate and the same journal apply.
+3. **Score from the journal, not the transcript.** The server logs what
+   actually happened; the agent's final report is not trusted for numbers.
+
+### The PnL definition (the subtle part)
+
+The starting wallet holds about 53,000 USDT of BTC. If BTC rises 1%, every run
+"makes" 530 USDT just by holding. So:
+
+```
+pnl = value(final wallet, final prices) − value(starting wallet, final prices)
+```
+
+Holding still scores **exactly 0**, and only the agent's trading decisions move
+the number. `test_pnl_ignores_market_drift` pins this down.
+
+### Baselines: why scripted traders matter
+
+| Baseline | What it does | What it proves |
+|---|---|---|
+| `hold` | never trades | the reference: PnL must be 0 |
+| `taker` | buys at the ask and sells at the bid on alternate steps | crossing the spread costs money |
+| `momentum` | follows the last mid move, checking risk first | a "real" strategy, and it still loses after spreads |
+| `reckless` | oversized orders, fat-finger price, unknown product | the harness **catches** breaches and failures |
+
+Baselines are free, deterministic and run in CI on every push. The agent run
+costs money, so it's opt-in (`--agent`). A useful first question for any agent
+result: *does it beat `hold`?* On this snapshot, `hold` is hard to beat,
+because no strategy here earns more than the spreads cost.
+
+### Checks (`--check`)
+
+`check()` turns expectations into a pass/fail exit code that CI can enforce:
+`hold` is exactly 0, careful baselines never breach, `reckless` mistakes are
+counted, every run reaches the close, and an agent stays under
+`--max-agent-breaches` / `--max-agent-failed-calls`. A harness that can't fail
+isn't testing anything.
+
+### Try it
+
+```bash
+uv run python -m trading_desk.evals --check
+```
+
+The command writes `runs/eval-<time>/report.md`, `report.json`, and one journal
+per run. Open a journal: every line is a tool call or a wallet snapshot.
+
+---
+
+*Phase 7 is added here once it's built. See [PLAN.md](PLAN.md).*
